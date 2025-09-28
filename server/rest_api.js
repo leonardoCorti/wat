@@ -4,11 +4,25 @@ const fs = require("fs");
 const bodyParser = require("body-parser");
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
+const path = require("path");
 
 const app = express();
 const port = 3000;
 
-const API_TOKEN = fs.readFileSync("api.token", "utf-8").trim();
+const tokenFile = path.join(__dirname, "api.token");
+
+let API_TOKEN;
+
+if (!fs.existsSync(tokenFile)) {
+  // Import crypto only when we actually need it
+  const { randomBytes } = require("crypto");
+  const token = randomBytes(32).toString("hex"); // 64-char token
+  fs.writeFileSync(tokenFile, token, "utf-8");
+  console.log("Token generated:", token);
+  API_TOKEN = token;
+} else {
+  API_TOKEN = fs.readFileSync(tokenFile, "utf-8").trim();
+}
 
 function authenticate(req, res, next) {
   const authHeader = req.headers["authorization"];
