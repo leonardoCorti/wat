@@ -9,10 +9,10 @@ default:
 # -------------------
 
 # Extract version from Cargo.toml
-version := `cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version'`
+version := `cd client; cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version'`
 
 # Extract crate name
-crate_name := `cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name'`
+crate_name := `cd client; cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name'`
 
 # -------------------
 # Rust
@@ -20,17 +20,17 @@ crate_name := `cargo metadata --no-deps --format-version 1 | jq -r '.packages[0]
 
 # Build Rust project
 build:
-    cargo build
+    cd client && cargo build
 
 # Run tests
 test:
-    cargo test
+    cd client && cargo test
 
 # Build release binary into ./release/bin/
 release-rust:
-    cargo build --release --all-features
+    cd client && cargo build --release --all-features
     mkdir -p release/bin
-    cp target/release/{{crate_name}} release/bin/
+    cp client/target/release/{{crate_name}} release/bin/
 
 # -------------------
 # Node.js server
@@ -47,10 +47,6 @@ server-run:
 # Run server in dev mode (auto-restart if nodemon is installed)
 server-dev:
     cd server && npx nodemon rest_api.js
-
-# Initialize token (must be done before running rest_api.js)
-server-init:
-    cd server && node generate-token.js
 
 # -------------------
 # Release bundle (Rust + Node)
@@ -73,7 +69,7 @@ release: release-rust
 
 # Clean build artifacts
 clean:
-    cargo clean
+    cd client && cargo clean
     rm -rf release wat-*.tgz
     cd server && rm -rf node_modules
 

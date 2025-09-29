@@ -1,1 +1,6 @@
-/target
+/client/target
+api.token
+/release
+/server/node_modules
+/server/.wwebjs_cache
+/server/.wwebjs_auth
