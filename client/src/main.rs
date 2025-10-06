@@ -1,5 +1,7 @@
 use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgGroup, Args, Parser, Subcommand};
+
+mod wwebjsserver_api;
 
 /// wat — a command-line tool for interacting with WhatsApp
 #[derive(Parser, Debug)]
@@ -19,20 +21,11 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Work with chats
+    /// list all chats
     Chats(ChatsCmd),
 
-    /// Send messages
-    Send(SendArgs),
-
-    /// Download an attachment
-    Download(DownloadArgs),
-
-    /// Account / session management (login, logout, status)
-    Session(SessionCmd),
-
-    /// Misc utilities (search, export, settings)
-    Misc(MiscCmd),
+    /// send a message
+    Message(MessageCmd),
 
     /// interactive tui
     #[cfg(feature = "tui")]
@@ -40,134 +33,46 @@ enum Commands {
 }
 
 #[derive(Args, Debug)]
-struct ChatsCmd {
-    #[command(subcommand)]
-    sub: ChatsSub,
-}
-
-#[derive(Subcommand, Debug)]
-enum ChatsSub {
-    /// List recent chats
-    List {
-        /// show full details (last message preview, unread count)
-        #[arg(short, long)]
-        details: bool,
-
-        /// limit results
-        #[arg(short, long, default_value_t = 50)]
-        limit: usize,
-    },
-
-    /// Print the full chat with a contact or group
-    Print {
-        /// contact phone number or group id (human readable allowed)
-        #[arg(value_name = "TARGET")]
-        target: String,
-
-        /// number of messages to print (most recent)
-        #[arg(short, long, default_value_t = 100)]
-        count: usize,
-
-        /// show timestamps
-        #[arg(short, long)]
-        timestamps: bool,
-    },
-
-    /// Show metadata for a given chat
-    Info { target: String },
-
-    /// Archive a chat
-    Archive { target: String },
-
-    /// Unarchive a chat
-    Unarchive { target: String },
-}
-
-#[derive(Args, Debug)]
-struct SendArgs {
-    /// recipient phone number or group id
-    #[arg(value_name = "TO")]
+struct MessageCmd {
+    /// number of the receiver
     to: String,
-
-    /// message text (if omitted, reads from stdin)
-    #[arg(value_name = "MESSAGE")]
-    message: Option<String>,
-
-    /// path to file to attach
-    #[arg(short, long, value_name = "FILE")]
-    attach: Option<String>,
-
-    /// schedule the message (RFC3339 timestamp)
-    #[arg(long, value_name = "TIME")]
-    at: Option<String>,
+    /// text message
+    message: String,
 }
 
 #[derive(Args, Debug)]
-struct DownloadArgs {
-    /// message id or attachment id
-    #[arg(value_name = "ATTACHMENT_ID")]
-    attachment_id: String,
+#[command(group(
+    ArgGroup::new("ordering")
+        .args(&["reverse_chronological_order", "alphabetical_order", "chronological_order"])
+        .multiple(false) // disallow using both at once
+))]
+struct ChatsCmd {
+    /// how many chats to print
+    #[arg(short, long)]
+    limit: Option<usize>,
 
-    /// output path
-    #[arg(short, long, default_value = ".")]
-    out: String,
-}
+    ///chronological order
+    #[arg(short, long)]
+    chronological_order: bool,
 
-#[derive(Args, Debug)]
-struct SessionCmd {
-    #[command(subcommand)]
-    sub: SessionSub,
-}
+    /// reverse chronological order (default)
+    #[arg(short, long)]
+    reverse_chronological_order: bool,
 
-#[derive(Subcommand, Debug)]
-enum SessionSub {
-    /// Start or resume a session (opens QR flow or uses stored credentials)
-    Login,
-    /// Logout and clear session
-    Logout,
-    /// Show session status
-    Status,
-}
-
-#[derive(Args, Debug)]
-struct MiscCmd {
-    #[command(subcommand)]
-    sub: MiscSub,
-}
-
-#[derive(Subcommand, Debug)]
-enum MiscSub {
-    /// Search messages across chats
-    Search {
-        query: String,
-        #[arg(short, long, default_value_t = 50)]
-        limit: usize,
-    },
-
-    /// Export a chat to JSON or plain text
-    Export {
-        target: String,
-        #[arg(short, long, default_value = "json")]
-        format: String,
-    },
-
-    /// List contacts
-    Contacts {
-        #[arg(short, long)]
-        details: bool,
-    },
+    /// alphabetical order
+    #[arg(short, long)]
+    alphabetical_order: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    println!("{:#?}", cli);
+
     match cli.command {
-        Commands::Chats(ch) => handle_chats(ch).await?,
-        Commands::Send(s) => handle_send(s).await?,
-        Commands::Download(d) => handle_download(d).await?,
-        Commands::Session(s) => handle_session(s).await?,
-        Commands::Misc(m) => handle_misc(m).await?,
+        Commands::Chats(mut ch) => handle_chats(&mut ch).await?,
+        Commands::Message(MessageCmd) => {},
         #[cfg(feature = "tui")]
         Commands::Tui => launch_tui().await?,
     }
@@ -175,78 +80,14 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handle_chats(cmd: ChatsCmd) -> Result<()> {
-    match cmd.sub {
-        ChatsSub::List { details, limit } => {
-            println!("Listing up to {} chats (details={})", limit, details);
-            // TODO: query backend and print lists
-        }
-        ChatsSub::Print {
-            target,
-            count,
-            timestamps,
-        } => {
-            println!(
-                "Printing {} messages for '{}' (timestamps={})",
-                count, target, timestamps
-            );
-            // TODO: fetch messages from backend and print
-        }
-        ChatsSub::Info { target } => {
-            println!("Chat info for {}", target);
-        }
-        ChatsSub::Archive { target } => println!("Archiving {}", target),
-        ChatsSub::Unarchive { target } => println!("Unarchiving {}", target),
+async fn handle_chats(ch: &mut ChatsCmd) -> Result<()> {
+    // enforcing the default order in options parsing
+    if !ch.chronological_order && !ch.reverse_chronological_order && !ch.alphabetical_order {
+        ch.reverse_chronological_order = true;
     }
+    println!("{:#?}", ch);
     Ok(())
 }
-
-async fn handle_send(args: SendArgs) -> Result<()> {
-    let message = if let Some(m) = args.message {
-        m
-    } else {
-        // read from stdin
-        use tokio::io::{self, AsyncReadExt};
-        let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf).await?;
-        buf
-    };
-
-    println!(
-        "Sending to {}: {} (attach={:?}, at={:?})",
-        args.to, message, args.attach, args.at
-    );
-    // TODO: enqueue/send using backend
-    Ok(())
-}
-
-async fn handle_download(args: DownloadArgs) -> Result<()> {
-    println!("Downloading {} to {}", args.attachment_id, args.out);
-    // TODO: download from backend
-    Ok(())
-}
-
-async fn handle_session(cmd: SessionCmd) -> Result<()> {
-    match cmd.sub {
-        SessionSub::Login => println!("Starting login flow (QR / credentials)..."),
-        SessionSub::Logout => println!("Logging out and clearing credentials..."),
-        SessionSub::Status => println!("Session status: not implemented"),
-    }
-    Ok(())
-}
-
-async fn handle_misc(cmd: MiscCmd) -> Result<()> {
-    match cmd.sub {
-        MiscSub::Search { query, limit } => println!("Searching for '{}' (limit={})", query, limit),
-        MiscSub::Export { target, format } => println!("Exporting {} as {}", target, format),
-        MiscSub::Contacts { details } => println!("Listing contacts (details={})", details),
-    }
-    Ok(())
-}
-
-// -------------------------
-// Optional TUI (only compiled when feature "tui" is enabled)
-// -------------------------
 
 #[cfg(feature = "tui")]
 async fn launch_tui() -> Result<()> {
